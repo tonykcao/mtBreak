@@ -1,3 +1,5 @@
+# Engine forked from https://github.com/anneouyang
+
 class MT19937:
   w, n = 32, 624
   f = 1812433253
