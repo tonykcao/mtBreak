@@ -1,10 +1,11 @@
+// mt19937_clone.cpp
 #include <array>
 #include <cstdint>
 #include <iostream>
 #include <random>
 
 class MT19937 {
-public:
+    public:
     static constexpr int w = 32, n = 624, m = 397, r = 31;
     static constexpr uint32_t a = 0x9908B0DF;
     static constexpr uint32_t d = 0xFFFFFFFF;
@@ -13,22 +14,25 @@ public:
     static constexpr int u = 11, s = 7, t = 15, l = 18;
     static constexpr uint32_t f = 1812433253u;
 
+    static constexpr uint32_t lower_mask = (1u << r) - 1;
+    static constexpr uint32_t upper_mask = (~lower_mask) & 0xFFFFFFFFu;
+
     MT19937(uint32_t seed = 0x19937u) {
         state.fill(0);
         idx = n;
         initialize(seed);
     }
 
-    // Inject recovered state directly:
+    // inject recovered state
     void set_state(const std::array<uint32_t,n>& recovered) {
         state = recovered;
-        idx = n;  // so next temper() will trigger twist()
+        idx = n;
     }
 
+    // standard MT tempering
     uint32_t temper() {
         if (idx >= n) twist();
         uint32_t y = state[idx++];
-        // tempering
         y ^= ((y >> u) & d);
         y ^= ((y << s) & b);
         y ^= ((y << t) & c);
@@ -50,8 +54,6 @@ private:
     }
 
     void twist() {
-        constexpr uint32_t lower_mask = (1u << r) - 1;        // lowest r bits
-        constexpr uint32_t upper_mask = (~lower_mask) & 0xFFFFFFFFu;  // highest w−r bits
         for (int i = 0; i < n; ++i) {
             uint32_t x = (state[i] & upper_mask)
                        + (state[(i+1)%n] & lower_mask);
@@ -63,9 +65,8 @@ private:
     }
 
 public:
-    // Inversion helpers:
     static uint32_t untemper(uint32_t y) {
-        y = inv_right(y, l, 0xFFFFFFFFu);
+        y = inv_right(y, l, d);
         y = inv_left (y, t, c);
         y = inv_left (y, s, b);
         y = inv_right(y, u, d);
@@ -73,32 +74,43 @@ public:
     }
 
 private:
-    // invert y ^= (y >> shift) & mask
     static uint32_t inv_right(uint32_t y, int shift, uint32_t mask) {
         uint32_t x = 0;
-        for (int i = 0; i < w; ++i) {
-            uint32_t part = (i < shift)
-                ? ((y >> i) & 1u)
-                : (((y >> i) & 1u) ^ (((x >> (i - shift)) & 1u) & ((mask >> i) & 1u)));
-            x |= part << i;
+        // must go from the most significant bit down
+        for (int i = w-1; i >= 0; --i) {
+            uint32_t ybit = (y >> i) & 1u;
+            uint32_t mbit = (mask >> i) & 1u;
+            uint32_t xbit;
+            if (i + shift >= w) {
+                // no dependency on higher x-bits
+                xbit = ybit;
+            } else {
+                // xbit ^ ((x>>(i+shift)&1) & mbit) == ybit
+                xbit = ybit ^ (((x >> (i + shift)) & 1u) & mbit);
+            }
+            x |= (xbit << i);
         }
         return x;
     }
-    // invert y ^= (y << shift) & mask
     static uint32_t inv_left(uint32_t y, int shift, uint32_t mask) {
         uint32_t x = 0;
         for (int i = 0; i < w; ++i) {
-            int j = w - 1 - i;
-            uint32_t part = (i < shift)
-                ? ((y >> j) & 1u)
-                : (((y >> j) & 1u) ^ (((x >> (j + shift)) & 1u) & ((mask >> j) & 1u)));
-            x = (x << 1) | part;
+            uint32_t ybit = (y >> i) & 1u;
+            uint32_t mbit = (mask >> i) & 1u;
+            uint32_t xbit;
+            if (i < shift) {
+                // no dependency on lower x-bits
+                xbit = ybit;
+            } else {
+                // xbit ^ ((x>>(i-shift)&1) & mbit) == ybit
+                xbit = ybit ^ (((x >> (i - shift)) & 1u) & mbit);
+            }
+            x |= (xbit << i);
         }
         return x;
     }
 };
 
-// Compare two zero‐arg generators up to lim outputs
 template<class F, class G>
 void compare_streams(F f1, G f2, size_t lim = 100000) {
     for (size_t i = 0; i < lim; ++i) {
