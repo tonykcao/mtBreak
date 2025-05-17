@@ -112,7 +112,7 @@ private:
 };
 
 template<class F, class G>
-void compare_streams(F f1, G f2, size_t lim = 100000) {
+void compare_streams(F f1, G f2, uint32_t lim = 100000) {
     for (size_t i = 0; i < lim; ++i) {
         if (f1() != f2()) {
             std::cout << "Outputs differ at index " << i << std::endl;
